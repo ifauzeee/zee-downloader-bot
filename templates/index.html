@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Downloader</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        input, button { padding: 10px; margin: 5px; }
+        #qualities, #progress { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Video Downloader</h1>
+    <form id="urlForm">
+        <input type="text" id="url" name="url" placeholder="Masukkan link YouTube/TikTok" required>
+        <button type="submit">Cek Kualitas</button>
+    </form>
+    <div id="qualities"></div>
+    <div id="progress"></div>
+
+    <script>
+        document.getElementById('urlForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const url = document.getElementById('url').value;
+            const response = await fetch('/get_qualities', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `url=${encodeURIComponent(url)}`
+            });
+            const data = await response.json();
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            const qualitiesDiv = document.getElementById('qualities');
+            qualitiesDiv.innerHTML = '<h3>Pilih Kualitas:</h3>';
+            data.qualities.forEach(q => {
+                const button = document.createElement('button');
+                button.textContent = `${q.resolution} (~${q.size.toFixed(1)} MB)`;
+                button.onclick = () => startDownload(url, q.format_id);
+                qualitiesDiv.appendChild(button);
+            });
+        });
+
+        async function startDownload(url, format_id) {
+            const response = await fetch('/download', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `url=${encodeURIComponent(url)}&format_id=${format_id}`
+            });
+            const data = await response.json();
+            const sessionId = data.session_id;
+            const progressDiv = document.getElementById('progress');
+            progressDiv.innerHTML = '<h3>Progres Download:</h3><p id="status">Memulai...</p>';
+
+            const interval = setInterval(async () => {
+                const statusResponse = await fetch(`/progress/${sessionId}`);
+                const status = await statusResponse.json();
+                const statusP = document.getElementById('status');
+                if (status.status === 'downloading') {
+                    statusP.textContent = `Downloading: ${status.percent.toFixed(1)}% (${status.speed.toFixed(2)} MB/s)`;
+                } else if (status.status === 'finished') {
+                    statusP.textContent = 'Download selesai!';
+                    clearInterval(interval);
+                    window.location.href = `/get_file/${sessionId}`;
+                } else if (status.status === 'error') {
+                    statusP.textContent = `Error: ${status.error}`;
+                    clearInterval(interval);
+                }
+            }, 1000);
+        }
+    </script>
+</body>
+</html>
